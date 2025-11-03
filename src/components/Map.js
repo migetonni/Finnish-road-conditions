@@ -1,6 +1,7 @@
 import { useEffect, useRef } from "react";
 import leaflet from "leaflet";
 import 'leaflet/dist/leaflet.css';
+import L from "leaflet";
 import RoadData from "../api/fetchRoadData";
 import fetchRoadData from "../api/fetchRoadData";
 import colorPicker from "../utils/roadColor";
@@ -9,9 +10,10 @@ export default function Map() {
 
     const mapRef = useRef();
     const lastRoadTypeRef = useRef(null);
+    const geoJsonLayerRef = useRef(null);
 
     useEffect(()=> {
-        mapRef.current = leaflet.map('map').setView([64.5, 26.0], 5);
+        mapRef.current = leaflet.map('map', { preferCanvas: true }).setView([64.5, 26.0], 5);
 
         
         leaflet.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}.png', {
@@ -38,15 +40,18 @@ export default function Map() {
             if (zoomLev <= 7) roadType = "mainRoad";
             else if (zoomLev <= 10) roadType = "secondaryRoad";
             else roadType = "minorRoad";
+             if (geoJsonLayerRef.current && mapRef.current.hasLayer(geoJsonLayerRef.current)) {
+                mapRef.current.removeLayer(geoJsonLayerRef.current);
+                geoJsonLayerRef.current = null;
+                };
 
             
             if (lastRoadTypeRef.current !== roadType) {
                 
-                mapRef.current.eachLayer((layer) => {
-                    if (!(layer instanceof leaflet.TileLayer)) {
-                        mapRef.current.removeLayer(layer);
+            
+                if (geoJsonLayerRef.current) {
+                    mapRef.current.removeLayer(geoJsonLayerRef.current);
                     }
-                });
             }    
             let from = 0;
             let hasMore = true;
@@ -54,37 +59,40 @@ export default function Map() {
 
             
             const data = await fetchRoadData(from, pageSize, hasMore, roadType);
-            data.forEach((row, idx) => {
-                console.log("Row", idx, row); // inspect all fields
-                });
-            data.forEach(row => {
-                let allCoords = JSON.parse(row.coords_json)
-                let polyLineCoords = [];
-                
-                
-                
-                allCoords.forEach(i => {
-                    let singleCoord = i[1];
-                    
-                    singleCoord.pop();
-                    [singleCoord[0], singleCoord[1]] = [singleCoord[1], singleCoord[0]];
-                    console.log(singleCoord);
-                    polyLineCoords.push(singleCoord)
-                    console.log(row.overall_road_condition)
-                    console.log(row.precipitation_condition)
-                    leaflet.polyline(polyLineCoords, { color: colorPicker(row.overall_road_condition, row.precipitation_condition), weight: 2 }).addTo(mapRef.current);
-                    
-                        
-                })
-                
-                
+            const features = data.map((row) => {
+            const coords = JSON.parse(row.coords_json);
 
-                
-                
-                
+            
+            const lines = coords.map((segment) =>
+                segment.map(([lon, lat]) => [lon, lat])
+            );
+
+            return {
+                type: "Feature",
+                geometry: { type: "MultiLineString", coordinates: lines },
+                properties: {
+                condition: row.overall_road_condition,
+                precipitation: row.precipitation_condition,
+                },
+            };
             });
-            lastRoadTypeRef.current = roadType;
-            isFetching = false
+        
+        geoJsonLayerRef.current = L.geoJSON(
+          { type: "FeatureCollection", features },
+          {
+            style: (feature) => ({
+              color: colorPicker(
+                feature.properties.condition,
+                feature.properties.precipitation
+              ),
+              weight: 2,
+              opacity: 0.8,
+            }),
+          }
+        ).addTo(mapRef.current);
+
+        lastRoadTypeRef.current = roadType;
+        isFetching = false
             
     }
         loadData()
