@@ -9,8 +9,8 @@ import colorPicker from "../utils/roadColor";
 export default function Map() {
 
     const mapRef = useRef();
-    const lastRoadTypeRef = useRef(null);
-    const geoJsonLayerRef = useRef(null);
+    
+    const geoJsonLayerRef = useRef({});
 
     useEffect(()=> {
         mapRef.current = leaflet.map('map', { preferCanvas: true }).setView([64.5, 26.0], 5);
@@ -21,38 +21,51 @@ export default function Map() {
             subdomains: ['a', 'b', 'c', 'd'],
             attribution:  '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/attributions">CARTO</a>'
         }).addTo(mapRef.current);
+           
+        const controlDiv = L.control({ position: "bottomleft" });
+        controlDiv.onAdd = () => {
+        const div = L.DomUtil.create("div", "leaflet-control-layers leaflet-bar");
+        div.innerHTML = `
+            <label style="display:block;margin:4px;">
+                <input type="checkbox" id="mainRoad" checked> Main Roads
+            </label>
+            <label style="display:block;margin:4px;">
+                <input type="checkbox" id="secondaryRoad"> Secondary Roads
+            </label>
+            <label style="display:block;margin:4px;">
+                <input type="checkbox" id="minorRoad"> Minor Roads
+            </label>
+        `;
+      return div;
+    };
+    controlDiv.addTo(mapRef.current);
 
-        const getZoomLev=()=> {
-            let zoomlev = mapRef.current.getZoom()
-            return zoomlev
-        }
+      
+
+    
+        
+        
+        
 
         let isFetching = false;
-        const loadData = async () => {
+        const loadData = async (type) => {
             if (isFetching) {
                 return;
             }
             isFetching = true;
             
-            const zoomLev = getZoomLev();
+            
             let roadType = "";
 
-            if (zoomLev <= 7) roadType = "mainRoad";
-            else if (zoomLev <= 10) roadType = "secondaryRoad";
+            if (type == "mainRoad") roadType = "mainRoad";
+            else if (type == "secondaryRoad") roadType = "secondaryRoad";
             else roadType = "minorRoad";
-             if (geoJsonLayerRef.current && mapRef.current.hasLayer(geoJsonLayerRef.current)) {
-                mapRef.current.removeLayer(geoJsonLayerRef.current);
-                geoJsonLayerRef.current = null;
-                };
 
             
-            if (lastRoadTypeRef.current !== roadType) {
-                
+
             
-                if (geoJsonLayerRef.current) {
-                    mapRef.current.removeLayer(geoJsonLayerRef.current);
-                    }
-            }    
+            
+             
             let from = 0;
             let hasMore = true;
             let pageSize = 500;
@@ -77,7 +90,7 @@ export default function Map() {
             };
             });
         
-        geoJsonLayerRef.current = L.geoJSON(
+        const layer = L.geoJSON(
           { type: "FeatureCollection", features },
           {
             style: (feature) => ({
@@ -86,20 +99,50 @@ export default function Map() {
                 feature.properties.precipitation
               ),
               weight: 2,
-              opacity: 0.8,
+              opacity: 2,
             }),
           }
-        ).addTo(mapRef.current);
+        )
 
-        lastRoadTypeRef.current = roadType;
+        geoJsonLayerRef.current[type] = layer;
+        layer.addTo(mapRef.current);
         isFetching = false
             
     }
-        loadData()
+        const buttonListener= async (box, type) => {
+            if (box.checked) {
+                
+                await loadData(type);
+            } else {
+                
+                if (geoJsonLayerRef.current[type]) {
+                    mapRef.current.removeLayer(geoJsonLayerRef.current[type]);
+                    delete geoJsonLayerRef.current[type];
+                    }
+            }
+        }
 
-        mapRef.current.on("zoomend", () =>{
-            loadData();
-        })
+
+    
+
+        
+        setTimeout(() => {
+            const mainBox = document.getElementById("mainRoad");
+            const secondaryBox = document.getElementById("secondaryRoad");
+            const minorBox = document.getElementById("minorRoad");
+
+            [mainBox, secondaryBox, minorBox].forEach((box) => {
+                box.addEventListener("change", () => buttonListener(box, box.id));
+            });
+
+            buttonListener(mainBox, "mainRoad");
+            }, 100);
+
+
+        
+        
+        
+
 
         
         return () => {
