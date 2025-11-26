@@ -1,7 +1,7 @@
-import React, {useEffect, useState} from 'react';
+
 import { supabase } from '../utils/supabase';
 
-export default async function fetchRoadData(from, pageSize, hasMore, roadtype) {
+/**export default async function fetchRoadData(from, pageSize, hasMore, roadtype) {
     const cacheKey = `roadData_${roadtype}`;
     //const cached = localStorage.getItem(cacheKey);
 
@@ -42,4 +42,29 @@ export default async function fetchRoadData(from, pageSize, hasMore, roadtype) {
     }
     //localStorage.setItem(cacheKey, JSON.stringify(WholeData))
     return WholeData;
-};
+};**/
+
+import React from 'react';
+
+export default async function fetchRoadData(roadtype) {
+    try {
+        const response = await fetch('http://127.0.0.1:5000/get_traffic');
+        if (!response.ok) {
+            throw new Error(`HTTP error! status: ${response.status}`);
+        }
+        function filterData(item) {
+            return item.road_type === roadtype && item.forecast_type === 'FORECAST'
+        }
+        const allData = await response.json();
+
+        // Filter locally by roadtype and forecast_type
+        const filteredData = allData.filter(filterData);
+
+        console.log(`Total ${roadtype} records: ${filteredData.length}`);
+
+        return filteredData;
+    } catch (error) {
+        console.error('Fetch error:', error);
+        throw error;
+    }
+}
